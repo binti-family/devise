@@ -44,10 +44,75 @@ class LockableTest < ActiveSupport::TestCase
     initial_failed_attempts = user.failed_attempts
     same_user = User.find(user.id)
 
-    user.increment_failed_attempts
-    same_user.increment_failed_attempts
+    user.increment_failed_attempts!
+    same_user.increment_failed_attempts!
 
     assert_equal initial_failed_attempts + 2, user.reload.failed_attempts
+  end
+
+  # context: calling #valid_for_authentication? when expire_failed_in is enabled
+  test "should reset last_failed_at and failed_attempts if expired" do
+    user = create_user(last_failed_at: 1.hour.ago, failed_attempts: 1)
+    user.confirm
+
+    swap Devise, expire_failed_in: 5.minutes, maximum_attempts: 3 do
+      user.valid_for_authentication? { true }
+      assert_nil user.last_failed_at
+      assert_equal 0, user.failed_attempts
+    end
+  end
+
+  test "should set last_failed_at and set failed_attempts to 1 when expired & auth fails" do
+    user = create_user(last_failed_at: 1.hour.ago, failed_attempts: 3)
+    user.confirm
+
+    swap Devise, expire_failed_in: 5.minutes, maximum_attempts: 3 do
+      frozen_time = Time.now.utc
+      Time.now.utc { frozen_time }
+      user.valid_for_authentication? { false }
+
+      assert frozen_time, user.last_failed_at
+      assert_equal 1, user.failed_attempts
+    end
+  end
+
+  test "should set last_failed_at & increment failed_attemtps when not expired and auth fails" do
+    user = create_user(last_failed_at: 1.hour.ago, failed_attempts: 1)
+    user.confirm
+
+    swap Devise, expire_failed_in: 3.hours, maximum_attempts: 3 do
+      frozen_time = Time.now.utc
+      Time.now.utc { frozen_time }
+      user.valid_for_authentication? { false }
+
+      assert frozen_time, user.last_failed_at
+      assert_equal 2, user.failed_attempts
+    end
+  end
+  # end context
+
+  test "should not touch last_failed_at if expire_failed_in is 0" do
+    user = create_user(failed_attempts: 1)
+    user.confirm
+
+    swap Devise, expire_failed_in: 0, maximum_attempts: 3 do
+      user.valid_for_authentication? { false }
+
+      assert_equal 2, user.failed_attempts
+      assert_nil user.last_failed_at
+    end
+  end
+
+  test "should not touch last_failed_at if expire_failed_in is nil" do
+    user = create_user(failed_attempts: 1)
+    user.confirm
+
+    swap Devise, expire_failed_in: nil, maximum_attempts: 3 do
+      user.valid_for_authentication? { false }
+
+      assert_equal 2, user.failed_attempts
+      assert_nil user.last_failed_at
+    end
   end
 
   test "reset_failed_attempts! updates the failed attempts counter back to 0" do

@@ -129,6 +129,10 @@ Devise.setup do |config|
   # Time interval to unlock the account if :time is enabled as unlock_strategy.
   # config.unlock_in = 1.hour
 
+  # Time interval failed attempts to expire after. Zero disables.
+  # config.expire_failed_in = 1.hour
+
+
   # ==> Configuration for :recoverable
   #
   # Defines which key will be used when recovering the password for an account

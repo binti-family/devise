@@ -67,6 +67,19 @@ module Devise
         end
       end
 
+      # Resets last_failed_at to nil and failed attempts counter to 0
+      def reset_last_failed_at!
+        return unless respond_to?(:last_failed_at)
+
+        self.last_failed_at = nil
+        reset_failed_attempts!
+      end
+
+      def set_last_failed_at!
+        self.last_failed_at = Time.now.utc
+        save(validate:false)
+      end
+
       # Verifies whether a user is locked or not.
       def access_locked?
         !!locked_at && !lock_expired?
@@ -108,28 +121,25 @@ module Devise
         # if the user can login or not (wrong password, etc)
         unlock_access! if lock_expired?
 
-        if super && !access_locked?
-          true
+        # Reset last_failed_at timestamp & failed attempts if expired,
+        # no matter if the user can login or not (wrong password, etc)
+        reset_last_failed_at! if failed_at_expired?
+
+        return true if super && !access_locked?
+
+        set_last_failed_at! if expire_failed_enabled?
+        increment_failed_attempts!
+
+        if attempts_exceeded? && !access_locked?
+          lock_access!
         else
-          if expire_failed_enabled?
-            if last_failed_at.present? && last_failed_at < self.class.expire_failed_in.ago
-              self.failed_attempts = 0
-              self.last_failed_at = nil
-            else
-              self.last_failed_at = Time.now
-            end
-          end
-          increment_failed_attempts
-          if attempts_exceeded?
-            lock_access! unless access_locked?
-          else
-            save(validate: false)
-          end
-          false
+          save(validate: false)
         end
+
+        false
       end
 
-      def increment_failed_attempts
+      def increment_failed_attempts!
         self.class.increment_counter(:failed_attempts, id)
         reload
       end
@@ -165,6 +175,14 @@ module Devise
           else
             false
           end
+        end
+
+        # If expire_failed_in is enabled, tells if last_failed_at has expired
+        def failed_at_expired?
+          return false unless expire_failed_enabled?
+
+          last_failed_at.present? &&
+            last_failed_at < self.class.expire_failed_in.ago
         end
 
         # Checks whether the record is locked or not, yielding to the block

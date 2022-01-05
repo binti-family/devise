@@ -38,4 +38,5 @@ class UserOnEngine
   field :failed_attempts, type: Integer, default: 0 # Only if lock strategy is :failed_attempts
   field :unlock_token, type: String # Only if unlock strategy is :email or :both
   field :locked_at, type: Time
+  field :last_failed_at, type: Time # Only if expire_failed_in is enabled
 end
